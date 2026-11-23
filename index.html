@@ -118,7 +118,7 @@
         const toggleModal = () => document.getElementById('modal').classList.toggle('hidden');
         const updateVal = (id, val) => document.getElementById(id).innerText = val;
         
-        let simSpeed = 64, progress = 0, isSimRunning = false, frags = [];
+        let simSpeed = 64, progress = 0, isSimRunning = false, frags = [], sparks = [];
         const cCrash = document.getElementById('crashCanvas'), ctxC = cCrash.getContext('2d');
         const cChart = document.getElementById('chartCanvas'), ctxCh = cChart.getContext('2d');
 
@@ -131,10 +131,10 @@
         window.onload = resize;
 
         // --- Simplified Simulation ---
-        const resetSim = () => { progress = 0; isSimRunning = false; frags = []; drawCrash(); };
+        const resetSim = () => { progress = 0; isSimRunning = false; frags = []; sparks = []; drawCrash(); };
         const runSim = () => {
             if(isSimRunning) return;
-            isSimRunning = true; progress = 0; frags = [];
+            isSimRunning = true; progress = 0; frags = []; sparks = [];
             const loop = () => {
                 progress += 0.015 * (simSpeed / 64);
                 if (progress >= 1) { progress = 1; isSimRunning = false; }
@@ -148,18 +148,37 @@
             const w = cCrash.width, h = cCrash.height, wallX = w * 0.15;
             ctxC.clearRect(0, 0, w, h);
             
-            // Background & Wall
-            ctxC.fillStyle = '#f8fafc'; ctxC.fillRect(0,0,w,h);
-            ctxC.fillStyle = '#111'; ctxC.fillRect(wallX-40, 0, 40, h);
-
             // Calculation states
             const p = Math.min(progress, 1);
             const crashPhase = Math.max(0, (p - 0.4) / 0.6); // 0 to 1 during crush
             const startX = w * 0.9;
-            const aegisLen = 100 * (1 - crashPhase * 0.9); // max 90% crush
-            const aegisX = p < 0.4 ? startX - (startX - wallX - 100) * (p/0.4) : wallX + aegisLen;
             
-            // Draw Fragments (Simplified)
+            // Camera Shake Effect (Reduced intensity)
+            let shakeX = 0, shakeY = 0;
+            if(crashPhase > 0 && crashPhase < 0.6) {
+                shakeX = (Math.random() - 0.5) * 12 * (1 - crashPhase/0.6);
+                shakeY = (Math.random() - 0.5) * 12 * (1 - crashPhase/0.6);
+            }
+            ctxC.save();
+            ctxC.translate(shakeX, shakeY);
+
+            // Background & Rigid Wall
+            ctxC.fillStyle = '#f8fafc'; ctxC.fillRect(-50, -50, w+100, h+100); 
+            ctxC.fillStyle = '#111'; ctxC.fillRect(wallX-40, 0, 40, h);
+            
+            // Cabin Line Warning Indicator
+            ctxC.strokeStyle = '#e10600'; ctxC.setLineDash([5, 5]); ctxC.lineWidth = 2;
+            ctxC.beginPath(); ctxC.moveTo(wallX - 40, 0); ctxC.lineTo(wallX - 40, h); ctxC.stroke();
+            ctxC.setLineDash([]);
+            ctxC.fillStyle = '#e10600'; ctxC.font = 'bold 11px monospace'; 
+            ctxC.fillText("CABIN LINE (FATAL INTRUSION ZONE)", wallX - 35, h * 0.95);
+
+            // --- Aegis (Top) ---
+            const aegisLen = p < 0.4 ? 100 : 100 * (1 - crashPhase * 0.9); // max 90% crush
+            const aegisX = p < 0.4 ? startX - (startX - wallX - 100) * (p/0.4) : wallX + aegisLen;
+            const aegisFrontX = aegisX - aegisLen;
+            
+            // Draw Controlled Fragments
             if(crashPhase > 0 && crashPhase < 0.9) {
                 if(Math.random() > 0.3) frags.push({x: aegisX, y: h*0.3 + (Math.random()*40-20), vx: Math.random()*5-2.5, vy: Math.random()*10-5, life: 1});
             }
@@ -170,16 +189,76 @@
                 return f.life > 0;
             });
 
-            // Draw Aegis (Top)
-            ctxC.fillStyle = '#e10600'; ctxC.fillRect(wallX, h*0.3 - 20, aegisLen, 40);
-            ctxC.fillStyle = '#111'; ctxC.fillRect(aegisX, h*0.3 - 30, 150, 60);
+            ctxC.fillStyle = '#e10600'; ctxC.fillRect(aegisFrontX, h*0.3 - 20, aegisLen, 40); // Aegis Crush Tube
+            ctxC.fillStyle = '#111'; ctxC.fillRect(aegisX, h*0.3 - 30, 150, 60); // Aegis Cabin Block
 
-            // Draw Steel (Bottom) - erratic bouncing simplified
-            const steelLen = 100 * (1 - Math.pow(crashPhase, 0.5) * 0.9);
-            const steelX = p < 0.4 ? startX - (startX - wallX - 100) * (p/0.4) : wallX + steelLen + (p>0.9 ? 10 : 0);
+            // --- Standard Steel (Bottom) - SEVERE CRASH (Accordion buckling) ---
+            const steelLen = p < 0.4 ? 100 : 100 * (1 - crashPhase * 0.4); // Compresses to 60 (Accordion effect)
+            const steelIntrusion = p < 0.4 ? 0 : crashPhase * 60; // Fails to absorb, pushes past the wall by 60
+            const steelX = p < 0.4 ? startX - (startX - wallX - 100) * (p/0.4) : wallX + steelLen - steelIntrusion;
+            const steelFrontX = steelX - steelLen;
             
-            ctxC.fillStyle = '#9ca3af'; ctxC.fillRect(wallX, h*0.75 - 20, steelLen, 40);
-            ctxC.fillStyle = '#4b5563'; ctxC.fillRect(steelX, h*0.75 - 30, 150, 60);
+            // Warning Red Flash
+            if(crashPhase > 0 && crashPhase < 0.4) {
+                ctxC.fillStyle = `rgba(225, 6, 0, ${0.4 * (1 - crashPhase/0.4)})`;
+                ctxC.fillRect(-50, h*0.5, w+100, h*0.5+50);
+            }
+
+            // Erratic Sparks 
+            if(crashPhase > 0 && crashPhase < 0.7) {
+                for(let i=0; i<3; i++) {
+                    sparks.push({x: steelFrontX + 20, y: h*0.75 + (Math.random()*40-20), vx: (Math.random()-0.5)*15 - 3, vy: (Math.random()-0.5)*15, life: 1});
+                }
+            }
+            sparks = sparks.filter(s => {
+                s.x += s.vx; s.y += s.vy; s.life -= 0.06;
+                ctxC.fillStyle = `rgba(255, ${Math.random()*150 + 100}, 0, ${s.life})`;
+                ctxC.fillRect(s.x, s.y, Math.random()*5+2, Math.random()*5+2);
+                return s.life > 0;
+            });
+
+            // Buckled, Accordion Steel Tube
+            ctxC.fillStyle = '#9ca3af'; 
+            if (p < 0.4) {
+                ctxC.fillRect(steelFrontX, h*0.75 - 20, steelLen, 40);
+            } else {
+                const numFolds = 3;
+                const foldWidth = steelLen / (numFolds * 2);
+                ctxC.beginPath();
+                ctxC.moveTo(steelX, h*0.75 - 20);
+                
+                // Top edge accordion folds
+                for(let i=0; i<numFolds; i++) {
+                    const cx = steelX - (i*2 + 1)*foldWidth;
+                    const nx = steelX - (i*2 + 2)*foldWidth;
+                    ctxC.lineTo(cx, h*0.75 - 20 - (crashPhase * 15));
+                    ctxC.lineTo(nx, h*0.75 - 20);
+                }
+                
+                ctxC.lineTo(steelFrontX, h*0.75 + 20);
+                
+                // Bottom edge accordion folds
+                for(let i=numFolds-1; i>=0; i--) {
+                    const cx = steelX - (i*2 + 1)*foldWidth;
+                    const nx = steelX - (i*2)*foldWidth;
+                    ctxC.lineTo(cx, h*0.75 + 20 + (crashPhase * 15));
+                    ctxC.lineTo(nx, h*0.75 + 20);
+                }
+                ctxC.fill();
+            }
+
+            // Steel Cabin Block (Intruding into fatal zone)
+            ctxC.fillStyle = '#4b5563'; 
+            ctxC.fillRect(steelX, h*0.75 - 30, 150, 60);
+
+            // Intrusion Alert Text
+            if(crashPhase > 0.4) {
+                ctxC.fillStyle = '#e10600';
+                ctxC.font = '900 28px -apple-system, BlinkMacSystemFont, sans-serif';
+                ctxC.fillText("⚠ FATAL INTRUSION", steelX - 10, h*0.75 - 45);
+            }
+
+            ctxC.restore();
         };
 
         // --- Simplified Chart ---
